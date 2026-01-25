@@ -452,6 +452,16 @@ if(ENABLE_LUA)
 	add_definitions(-DSCRIPTING_ENABLED=1)
 endif()
 
+# ---- macOS: prevent CMake WrapOpenGL/FindOpenGL from injecting deprecated AGL.framework ----
+if(APPLE AND NOT IOS)
+  # Mark AGL as not found in cache, otherwise WrapOpenGL will add "-framework AGL" to link lines
+  set(WrapOpenGL_AGL "WrapOpenGL_AGL-NOTFOUND" CACHE FILEPATH "Disable deprecated AGL.framework" FORCE)
+
+  # Some CMake versions also use these names (harmless if unused)
+  set(OPENGL_AGL_LIBRARY "OPENGL_AGL_LIBRARY-NOTFOUND" CACHE FILEPATH "" FORCE)
+  set(OpenGL_AGL_LIBRARY "OpenGL_AGL_LIBRARY-NOTFOUND" CACHE FILEPATH "" FORCE)
+endif()
+
 ############################################
 #        Finding packages                  #
 ############################################
@@ -533,6 +543,7 @@ if(ENABLE_LAUNCHER OR ENABLE_EDITOR)
 		add_definitions(-DENABLE_QT_TRANSLATIONS)
 	endif()
 endif()
+
 
 if(NOT ENABLE_MINIMAL_LIB)
 	find_package(TBB REQUIRED)
@@ -704,6 +715,81 @@ endif()
 if(ENABLE_TEST)
 	enable_testing()
 	add_subdirectory(test)
+endif()
+
+# ---- macOS: final safety net - strip AGL from every target link interface ----
+if(APPLE AND NOT IOS)
+  message(STATUS "Final pass: stripping AGL from all buildsystem targets")
+
+  function(_vcmi_strip_agl_from_target _tgt)
+    if(NOT TARGET ${_tgt})
+      return()
+    endif()
+
+    set(_props
+      LINK_LIBRARIES
+      LINK_OPTIONS
+      INTERFACE_LINK_LIBRARIES
+      INTERFACE_LINK_OPTIONS
+      IMPORTED_LINK_INTERFACE_LIBRARIES
+      IMPORTED_LINK_INTERFACE_LIBRARIES_DEBUG
+      IMPORTED_LINK_INTERFACE_LIBRARIES_RELEASE
+      IMPORTED_LINK_INTERFACE_LIBRARIES_RELWITHDEBINFO
+      IMPORTED_LINK_INTERFACE_LIBRARIES_MINSIZEREL
+      IMPORTED_LINK_OPTIONS
+      IMPORTED_LINK_OPTIONS_DEBUG
+      IMPORTED_LINK_OPTIONS_RELEASE
+      IMPORTED_LINK_OPTIONS_RELWITHDEBINFO
+      IMPORTED_LINK_OPTIONS_MINSIZEREL
+    )
+
+    foreach(_p IN LISTS _props)
+      get_target_property(_v ${_tgt} ${_p})
+      if(_v AND NOT _v STREQUAL "${_p}-NOTFOUND")
+        # Work on a sentinel-wrapped semicolon-string
+        set(_tmp ";${_v};")
+
+        # Remove common encodings of AGL
+        string(REPLACE ";-framework;AGL;" ";" _tmp "${_tmp}")
+        string(REPLACE ";SHELL:-framework AGL;" ";" _tmp "${_tmp}")
+        string(REPLACE ";-framework AGL;" ";" _tmp "${_tmp}")
+        string(REPLACE ";AGL.framework;" ";" _tmp "${_tmp}")
+        string(REPLACE ";AGL;" ";" _tmp "${_tmp}")
+
+        # Cleanup
+        string(REPLACE ";;" ";" _tmp "${_tmp}")
+        string(REGEX REPLACE "^;|;$" "" _tmp "${_tmp}")
+
+        set_property(TARGET ${_tgt} PROPERTY ${_p} "${_tmp}")
+      endif()
+    endforeach()
+  endfunction()
+
+  function(_vcmi_collect_targets_from_dir _dir _out)
+    get_property(_local DIRECTORY "${_dir}" PROPERTY BUILDSYSTEM_TARGETS)
+    set(_res ${_local})
+
+    get_property(_subs DIRECTORY "${_dir}" PROPERTY SUBDIRECTORIES)
+    foreach(_sd IN LISTS _subs)
+      _vcmi_collect_targets_from_dir("${_sd}" _child)
+      list(APPEND _res ${_child})
+    endforeach()
+
+    list(REMOVE_DUPLICATES _res)
+    set(${_out} "${_res}" PARENT_SCOPE)
+  endfunction()
+
+  _vcmi_collect_targets_from_dir("${CMAKE_BINARY_DIR}" _all_targets)
+  foreach(_t IN LISTS _all_targets)
+    _vcmi_strip_agl_from_target(${_t})
+  endforeach()
+
+  # Also patch known imported targets if present (belt & suspenders)
+  foreach(_t WrapOpenGL::WrapOpenGL OpenGL::GL OpenGL::OpenGL Qt6::Gui Qt6::Widgets)
+    if(TARGET ${_t})
+      _vcmi_strip_agl_from_target(${_t})
+    endif()
+  endforeach()
 endif()
 
 #######################################
