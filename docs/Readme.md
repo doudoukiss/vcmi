@@ -60,6 +60,7 @@ See also installation guide for [Heroes Chronicles](players/Heroes_Chronicles.md
 ## Documentation and guidelines for game modders
 
 - [Modding Guidelines](modders/Readme.md)
+- [Build Your Own Heroes3-Style Game Tutorial](modders/Tutorial_Build_Your_Own_Heroes3_Game.md)
 - [Mod File Format](modders/Mod_File_Format.md)
 - [Bonus Format](modders/Bonus_Format.md)
 - [Map Editor](modders/Map_Editor.md)

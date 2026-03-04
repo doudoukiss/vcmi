@@ -1,5 +1,8 @@
 # Modding Readme
 
+Start here if you want a complete beginner-to-release path:
+- [Build Your Own Heroes3-Style Game Tutorial](Tutorial_Build_Your_Own_Heroes3_Game.md)
+
 ## Creating mod
 
 To make your own mod you need to create subdirectory in **<data dir>/Mods/** with name that will be used as identifier for your mod.
